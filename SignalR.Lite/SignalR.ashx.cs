@@ -60,7 +60,7 @@ namespace SignalR.Lite
             return persistentConnection.OnReceived(connectionId, data);
         }
 
-        private Task HandleServerSentEvents(HttpContext context, string cursor, string connectionId)
+        private async Task HandleServerSentEvents(HttpContext context, string cursor, string connectionId)
         {
             var tcs = new TaskCompletionSource<object>();
             var topics = new[] { typeof(PersistentConnection).FullName, connectionId };
@@ -69,6 +69,9 @@ namespace SignalR.Lite
             context.Request.Headers.Remove("Accept-Encoding");
 
             context.Response.ContentType = "text/event-stream";
+
+            context.Response.Write("data: init\n\n");
+            await context.Response.FlushAsync();
 
             var subscription = messageBus.Subscribe(topics, cursor, (value, index) =>
             {
@@ -86,7 +89,7 @@ namespace SignalR.Lite
                 subscription.Dispose();
             });
 
-            return tcs.Task;
+            await tcs.Task;
         }
 
         private async Task HandleLongPolling(HttpContext context, string cursor, string connectionId)
