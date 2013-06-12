@@ -97,7 +97,29 @@ namespace SignalR.Lite
 
         private async Task HandleLongPolling(HttpContext context, string cursor, string connectionId, string[] topics)
         {
-            throw new NotImplementedException();
+            context.Response.ContentType = "application/json";
+            var tcs = new TaskCompletionSource<object>();
+
+            var subscription = messageBus.Subscribe(topics, cursor, (value, index) =>
+            {
+                var response = new PersistentResponse();
+                response.Messages = new List<object>();
+                response.Messages.Add(value);
+                response.Cursor = index.ToString();
+
+                context.Response.WriteJson(response);
+                tcs.TrySetResult(null);
+
+                return Task.FromResult(0);
+            });
+            
+            context.Response.ClientDisconnectedToken.Register(() =>
+            {
+                tcs.TrySetResult(null);
+                subscription.Dispose();
+            });
+
+            await tcs.Task;
         }
 
         protected abstract Task OnReceived(string connectionId, string data);
