@@ -16,10 +16,15 @@ namespace SignalR.Lite
             response.Write(JsonConvert.SerializeObject(value));
         }
 
-        public static Task WriteSSE(this HttpResponse response, object value)
+        public static Task WriteSSEAsync(this HttpResponse response, string value)
         {
-            response.Write("data:" + JsonConvert.SerializeObject(value) + "\n\n");
+            response.Write("data:" + value + "\n\n");
             return response.FlushAsync();
+        }
+
+        public static Task WriteJsonSSEAsync(this HttpResponse response, object value)
+        {
+            return response.WriteSSEAsync(JsonConvert.SerializeObject(value)); 
         }
     }
 }

@@ -7,11 +7,17 @@ using Newtonsoft.Json;
 
 namespace SignalR.Lite
 {
-    public class SignalR : HttpTaskAsyncHandler
+    public abstract class PersistentConnection
     {
         private static readonly MessageBus messageBus = new MessageBus();
 
-        public override Task ProcessRequestAsync(HttpContext context)
+        protected Connection Connection
+        {
+            get;
+            private set;
+        }
+
+        public Task ProcessRequestAsync(HttpContext context)
         {
             if (context.Request.Url.LocalPath.EndsWith("/negotiate"))
             {
@@ -28,6 +34,7 @@ namespace SignalR.Lite
                 string transport = context.Request.QueryString["transport"];
                 string cursor = context.Request.QueryString["messageId"];
                 string connectionId = context.Request.QueryString["connectionId"];
+                var topics = new[] { typeof(PersistentConnection).FullName, connectionId };
 
                 if (context.Request.Url.LocalPath.EndsWith("/send"))
                 {
@@ -38,9 +45,9 @@ namespace SignalR.Lite
                     switch (transport)
                     {
                         case "longPolling":
-                            return HandleLongPolling(context, cursor, connectionId);
+                            return HandleLongPolling(context, cursor, connectionId, topics);
                         case "serverSentEvents":
-                            return HandleServerSentEvents(context, cursor, connectionId);
+                            return HandleServerSentEvents(context, cursor, connectionId, topics);
                         default:
                             throw new NotSupportedException();
                     }
@@ -54,24 +61,18 @@ namespace SignalR.Lite
         {
             string data = context.Request.Form["data"];
 
-            var persistentConnection = new PersistentConnection();
-            persistentConnection.Connection = new Connection(messageBus, typeof(PersistentConnection).FullName);
+            Connection = new Connection(messageBus, typeof(PersistentConnection).FullName);
 
-            return persistentConnection.OnReceived(connectionId, data);
+            return OnReceived(connectionId, data);
         }
 
-        private async Task HandleServerSentEvents(HttpContext context, string cursor, string connectionId)
+        private async Task HandleServerSentEvents(HttpContext context, string cursor, string connectionId, string[] topics)
         {
-            var tcs = new TaskCompletionSource<object>();
-            var topics = new[] { typeof(PersistentConnection).FullName, connectionId };
-
-            // Disable IIS caching
+            // Disable IIS compression
             context.Request.Headers.Remove("Accept-Encoding");
 
             context.Response.ContentType = "text/event-stream";
-
-            context.Response.Write("data: init\n\n");
-            await context.Response.FlushAsync();
+            await context.Response.WriteSSEAsync("init");
 
             var subscription = messageBus.Subscribe(topics, cursor, (value, index) =>
             {
@@ -80,8 +81,10 @@ namespace SignalR.Lite
                 response.Messages.Add(value);
                 response.Cursor = index.ToString();
 
-                return context.Response.WriteSSE(response);
+                return context.Response.WriteJsonSSEAsync(response);
             });
+
+            var tcs = new TaskCompletionSource<object>();
 
             context.Response.ClientDisconnectedToken.Register(() =>
             {
@@ -92,10 +95,12 @@ namespace SignalR.Lite
             await tcs.Task;
         }
 
-        private async Task HandleLongPolling(HttpContext context, string cursor, string connectionId)
+        private async Task HandleLongPolling(HttpContext context, string cursor, string connectionId, string[] topics)
         {
             throw new NotImplementedException();
         }
+
+        protected abstract Task OnReceived(string connectionId, string data);
     }
 
     public class PersistentResponse
@@ -111,16 +116,6 @@ namespace SignalR.Lite
         /// </summary>
         [JsonProperty("M")]
         public List<object> Messages { get; set; }
-    }
-
-    public class PersistentConnection
-    {
-        public Connection Connection { get; set; }
-
-        public Task OnReceived(string connectionId, string data)
-        {
-            return Connection.Broadcast(data);
-        }
     }
 
     public class Connection
