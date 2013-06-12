@@ -4,30 +4,11 @@
     <title>SignalR Lite</title>
 </head>
 <body>
-    <input id="msg" />
-    <input type="button" id="send" value="Send" />
-
-    <ul id="msgs"></ul>
-
-    <script src="Scripts/jquery-2.0.2.js"></script>
-    <script src="Scripts/signalr.lite.js"></script>
-    <script>
-        $(function () {
-
-            var con = $.connection("/signalr.ashx");
-
-            con.receive(function (msg) {
-                $("#msgs").append("<li>" + msg + "</li>");
-            });
-
-            con.start().done(function () {
-                $("#send").click(function () {
-                    con.send($("#msg").val());
-                    $("#msg").val("");
-                });
-            });
-
-        });
-    </script>
+    <nav>
+        <ul>
+            <li><a href="chat.html">Chat</a></li>
+            <li><a href="moveShape.html">Move Shape</a></li>
+        </ul>
+    </nav>
 </body>
 </html>

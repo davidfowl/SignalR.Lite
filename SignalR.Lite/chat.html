@@ -1,0 +1,33 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>SignalR Lite</title>
+</head>
+<body>
+    <input id="msg" />
+    <input type="button" id="send" value="Send" />
+
+    <ul id="msgs"></ul>
+
+    <script src="Scripts/jquery-2.0.2.js"></script>
+    <script src="Scripts/signalr.lite.js"></script>
+    <script>
+        $(function () {
+
+            var con = $.connection();
+
+            con.receive(function (msg) {
+                $("#msgs").append("<li>" + msg + "</li>");
+            });
+
+            con.start().done(function () {
+                $("#send").click(function () {
+                    con.send($("#msg").val());
+                    $("#msg").val("");
+                });
+            });
+
+        });
+    </script>
+</body>
+</html>

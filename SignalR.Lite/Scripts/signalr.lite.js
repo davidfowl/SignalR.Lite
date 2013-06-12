@@ -99,8 +99,7 @@
 
             try {
                 connection.eventSource = new window.EventSource(connection.url + "?connectionId=" + connection.id + "&transport=" + this.name);
-            }
-            catch (e) {
+            } catch (e) {
                 // Failure on connect
                 d.reject();
                 return d.promise();

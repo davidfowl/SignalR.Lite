@@ -1,0 +1,42 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title></title>
+    <style>
+        #shape {
+            width: 100px;
+            height: 100px;
+            background-color: #0094ff;
+            cursor: move;
+        }
+    </style>
+</head>
+<body>
+    <div id="shape"></div>
+
+    <script src="Scripts/jquery-2.0.2.js"></script>
+    <script src="Scripts/jquery-ui-1.10.3.js"></script>
+    <script src="Scripts/signalr.lite.js"></script>
+    <script>
+        $(function () {
+            var con = $.connection(),
+                $shape = $("#shape");
+
+            con.receive(function (data) {
+                var move = JSON.parse(data);
+                if (move.id !== con.id) {
+                    $shape.css({ left: move.x, top: move.y });
+                }
+            });
+
+            con.start().done(function () {
+                $shape.draggable({
+                    drag: function () {
+                        con.send(JSON.stringify({ id: con.id, x: this.offsetLeft, y: this.offsetTop || 0 }));
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
