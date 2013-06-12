@@ -34,7 +34,7 @@ namespace SignalR.Lite
                 string transport = context.Request.QueryString["transport"];
                 string cursor = context.Request.QueryString["messageId"];
                 string connectionId = context.Request.QueryString["connectionId"];
-                var topics = new[] { typeof(PersistentConnection).FullName, connectionId };
+                var signals = new[] { GetType().FullName, connectionId };
 
                 if (context.Request.Url.LocalPath.EndsWith("/send"))
                 {
@@ -45,9 +45,9 @@ namespace SignalR.Lite
                     switch (transport)
                     {
                         case "longPolling":
-                            return HandleLongPolling(context, cursor, connectionId, topics);
+                            return HandleLongPolling(context, cursor, connectionId, signals);
                         case "serverSentEvents":
-                            return HandleServerSentEvents(context, cursor, connectionId, topics);
+                            return HandleServerSentEvents(context, cursor, connectionId, signals);
                         default:
                             throw new NotSupportedException();
                     }
@@ -61,12 +61,12 @@ namespace SignalR.Lite
         {
             string data = context.Request.Form["data"];
 
-            Connection = new Connection(messageBus, typeof(PersistentConnection).FullName);
+            Connection = new Connection(messageBus, GetType().FullName);
 
             return OnReceived(connectionId, data);
         }
 
-        private async Task HandleServerSentEvents(HttpContext context, string cursor, string connectionId, string[] topics)
+        private async Task HandleServerSentEvents(HttpContext context, string cursor, string connectionId, string[] signals)
         {
             // Disable IIS compression
             context.Request.Headers.Remove("Accept-Encoding");
@@ -74,7 +74,7 @@ namespace SignalR.Lite
             context.Response.ContentType = "text/event-stream";
             await context.Response.WriteSSEAsync("init");
 
-            var subscription = messageBus.Subscribe(topics, cursor, (value, index) =>
+            var subscription = messageBus.Subscribe(signals, cursor, (value, index) =>
             {
                 var response = new PersistentResponse();
                 response.Messages = new List<object>();
@@ -95,12 +95,12 @@ namespace SignalR.Lite
             subscription.Dispose();
         }
 
-        private async Task HandleLongPolling(HttpContext context, string cursor, string connectionId, string[] topics)
+        private async Task HandleLongPolling(HttpContext context, string cursor, string connectionId, string[] signals)
         {
             context.Response.ContentType = "application/json";
             var tcs = new TaskCompletionSource<object>();
 
-            var subscription = messageBus.Subscribe(topics, cursor, (value, index) =>
+            var subscription = messageBus.Subscribe(signals, cursor, (value, index) =>
             {
                 var response = new PersistentResponse();
                 response.Messages = new List<object>();
