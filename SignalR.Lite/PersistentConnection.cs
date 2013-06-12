@@ -7,7 +7,7 @@ using Newtonsoft.Json;
 
 namespace SignalR.Lite
 {
-    public abstract class PersistentConnection
+    public abstract class PersistentConnection : HttpTaskAsyncHandler
     {
         private static readonly MessageBus messageBus = new MessageBus();
 
@@ -17,7 +17,7 @@ namespace SignalR.Lite
             private set;
         }
 
-        public Task ProcessRequestAsync(HttpContext context)
+        public override Task ProcessRequestAsync(HttpContext context)
         {
             if (context.Request.Url.LocalPath.EndsWith("/negotiate"))
             {

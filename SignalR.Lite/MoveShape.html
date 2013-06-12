@@ -19,7 +19,7 @@
     <script src="Scripts/signalr.lite.js"></script>
     <script>
         $(function () {
-            var con = $.connection(),
+            var con = $.connection("MoveShape.ashx"),
                 $shape = $("#shape");
 
             con.receive(function (data) {

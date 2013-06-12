@@ -6,7 +6,7 @@ using System.Web;
 
 namespace SignalR.Lite
 {
-    public class Chat : PersistentConnection
+    public class MoveShape : PersistentConnection
     {
         protected override Task OnReceived(string connectionId, string data)
         {
