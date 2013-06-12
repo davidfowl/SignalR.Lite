@@ -31,7 +31,8 @@ namespace SignalR.Lite
 
         public IDisposable Subscribe(string[] topics, string cursor, Callback callback)
         {
-            int from = String.IsNullOrEmpty(cursor) ? -1 : Int32.Parse(cursor);
+            int from = -1;
+            Int32.TryParse(cursor, out from);
 
             Callback cb = async (result, index) =>
             {
