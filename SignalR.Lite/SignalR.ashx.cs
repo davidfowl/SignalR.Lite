@@ -9,7 +9,7 @@ namespace SignalR.Lite
 {
     public class SignalR : HttpTaskAsyncHandler
     {
-        private static readonly NaiveMessageBus messageBus = new NaiveMessageBus();
+        private static readonly MessageBus messageBus = new MessageBus();
 
         public override Task ProcessRequestAsync(HttpContext context)
         {
@@ -122,10 +122,10 @@ namespace SignalR.Lite
 
     public class Connection
     {
-        private readonly NaiveMessageBus _bus;
+        private readonly MessageBus _bus;
         private readonly string _defaultSignal;
 
-        public Connection(NaiveMessageBus bus, string defaultSignal)
+        public Connection(MessageBus bus, string defaultSignal)
         {
             _bus = bus;
             _defaultSignal = defaultSignal;

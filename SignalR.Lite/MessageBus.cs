@@ -6,7 +6,7 @@ namespace SignalR.Lite
 {
     public delegate Task Callback(object value, int cusor);
 
-    public class NaiveMessageBus
+    public class MessageBus
     {
         // List of subscriptions
         private readonly Dictionary<string, HashSet<Callback>> _subscriptions = new Dictionary<string, HashSet<Callback>>();
