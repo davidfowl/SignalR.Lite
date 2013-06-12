@@ -44,10 +44,6 @@
             });
         },
 
-        stop: function () {
-            this.transport.stop(this);
-        },
-
         send: function (message) {
             this.transport.send(this, message);
         },
@@ -66,12 +62,6 @@
             return $.ajax(connection.url + "/send?connectionId=" + connection.id + "&transport=" + connection.transport.name, {
                 type: "POST",
                 data: { data: message } 
-            });
-        },
-
-        stop: function (connection) {
-            return $.ajax(connection.url + "/abort?connectionId=" + connection.id + "&transport=" + connection.transport.name, {
-                type: "POST"
             });
         },
 
@@ -122,8 +112,7 @@
 
             return d.promise();
         },
-        send: transports._.send,
-        stop: transports._.stop
+        send: transports._.send
     };
 
     transports.longPolling = {
@@ -147,8 +136,7 @@
 
             return d.promise();
         },
-        send: transports._.send,
-        stop: transports._.stop,
+        send: transports._.send
     };
 
     $.connection = signalr;
