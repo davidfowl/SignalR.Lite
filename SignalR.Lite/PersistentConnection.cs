@@ -89,10 +89,10 @@ namespace SignalR.Lite
             context.Response.ClientDisconnectedToken.Register(() =>
             {
                 tcs.TrySetResult(null);
-                subscription.Dispose();
             });
 
             await tcs.Task;
+            subscription.Dispose();
         }
 
         private async Task HandleLongPolling(HttpContext context, string cursor, string connectionId, string[] topics)
@@ -116,10 +116,10 @@ namespace SignalR.Lite
             context.Response.ClientDisconnectedToken.Register(() =>
             {
                 tcs.TrySetResult(null);
-                subscription.Dispose();
             });
 
             await tcs.Task;
+            subscription.Dispose();
         }
 
         protected abstract Task OnReceived(string connectionId, string data);

@@ -79,6 +79,8 @@
             var response = window.JSON.parse(data),
                 messages = response.M;
 
+            connection.messageId = data.C;
+
             for (var i = 0; i < messages.length; i++) {
                 $(connection).triggerHandler("receive", [messages[i]]);
             }
@@ -125,8 +127,25 @@
     };
 
     transports.longPolling = {
-        connect: function (connection) {
+        name: "longPolling",
 
+        connect: function (connection) {
+            var d = $.Deferred();
+
+            (function poll() {
+                $.ajax(connection.url + "?connectionId=" + connection.id + "&transport=longPolling&messageId=" + (connection.messageId || ""), {
+                    type: "POST",
+                    dataType: "text"
+                }).then(function (data) {
+                    d.resolve();
+                    transports._.onMessage(connection, data);
+                    poll();
+                });
+            }());
+
+            setTimeout(function () { d.resolve(); }, 250);
+
+            return d.promise();
         },
         send: transports._.send,
         stop: transports._.stop,
