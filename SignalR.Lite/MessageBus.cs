@@ -73,7 +73,7 @@ namespace SignalR.Lite
             {
                 lock (_messages)
                 {
-                    var values = _messages.Skip(from);
+                    var values = _messages.Skip(from + 1);
 
                     if (values.Any())
                     {
