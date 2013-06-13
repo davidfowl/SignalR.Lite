@@ -1,58 +1,98 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Linq;
+using System.Collections.Concurrent;
+using System.Threading;
 
 namespace SignalR.Lite
 {
-    public delegate Task Callback(object value, int cusor);
+    public delegate void Callback(IEnumerable<object> value, int cusor);
 
     public class MessageBus
     {
         // List of subscriptions
-        private readonly Dictionary<string, HashSet<Callback>> _subscriptions = new Dictionary<string, HashSet<Callback>>();
+        private readonly ConcurrentDictionary<string, List<Callback>> _subscriptions = new ConcurrentDictionary<string, List<Callback>>();
 
         // List of messages
         private readonly List<object> _messages = new List<object>();
 
-        public async Task Publish(string topic, object data)
+        public Task Publish(string topic, object data)
         {
-            _messages.Add(data);
-            int index = _messages.Count - 1;
+            int index;
+            lock (_messages)
+            {
+                _messages.Add(data);
+                index = _messages.Count - 1;
+            }
 
-            HashSet<Callback> callbacks;
+            List<Callback> callbacks;
             if (_subscriptions.TryGetValue(topic, out callbacks))
             {
-                foreach (var cb in callbacks)
+                lock (callbacks)
                 {
-                    await cb(data, index);
+                    for (int i = callbacks.Count - 1; i >= 0; i--)
+                    {
+                        var cb = callbacks[i];
+                        cb(new[] { data }, index);
+                    }
                 }
             }
+
+            return Task.FromResult(0);
         }
 
-        public IDisposable Subscribe(string[] topics, string cursor, Callback callback)
+        public IDisposable Subscribe(string[] topics, string cursor, Callback callback, bool terminal = false)
         {
-            int from = -1;
-            Int32.TryParse(cursor, out from);
-
-            Callback cb = async (result, index) =>
+            int from;
+            if (!Int32.TryParse(cursor, out from))
             {
-                // Stay within range of the cursor
-                if (from >= _messages.Count || from < index)
+                from = -1;
+            }
+
+            var lockObj = new object();
+
+            Callback cb = (result, index) =>
+            {
+                lock (lockObj)
                 {
-                    await callback(result, index);
+                    if (terminal)
+                    {
+                        Interlocked.Exchange(ref callback, (r, i) => { }).Invoke(result, index);
+                    }
+                    else
+                    {
+                        callback(result, index);
+                    }
                 }
             };
 
+            if (from >= 0)
+            {
+                lock (_messages)
+                {
+                    var values = _messages.Skip(from);
+
+                    if (values.Any())
+                    {
+                        cb(values, _messages.Count - 1);
+                    }
+                }
+            }
+
             foreach (var topic in topics)
             {
-                HashSet<Callback> callbacks;
+                List<Callback> callbacks;
                 if (!_subscriptions.TryGetValue(topic, out callbacks))
                 {
-                    callbacks = new HashSet<Callback>();
+                    callbacks = new List<Callback>();
                     _subscriptions[topic] = callbacks;
                 }
 
-                callbacks.Add(cb);
+                lock (callbacks)
+                {
+                    callbacks.Add(cb);
+                }
             }
 
             return new Subscription(_subscriptions, topics, cb);
@@ -60,11 +100,11 @@ namespace SignalR.Lite
 
         private class Subscription : IDisposable
         {
-            private readonly IDictionary<string, HashSet<Callback>> _subscriptions;
+            private readonly IDictionary<string, List<Callback>> _subscriptions;
             private readonly string[] _topics;
             private readonly Callback _callback;
 
-            public Subscription(IDictionary<string, HashSet<Callback>> subscriptions, string[] topics, Callback callback)
+            public Subscription(IDictionary<string, List<Callback>> subscriptions, string[] topics, Callback callback)
             {
                 _subscriptions = subscriptions;
                 _topics = topics;
@@ -75,10 +115,13 @@ namespace SignalR.Lite
             {
                 foreach (var topic in _topics)
                 {
-                    HashSet<Callback> callbacks;
+                    List<Callback> callbacks;
                     if (_subscriptions.TryGetValue(topic, out callbacks))
                     {
-                        callbacks.Remove(_callback);
+                        lock (callbacks)
+                        {
+                            callbacks.Remove(_callback);
+                        }
                     }
                 }
             }

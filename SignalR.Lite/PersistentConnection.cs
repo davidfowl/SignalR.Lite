@@ -3,13 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Web;
-using Newtonsoft.Json;
+using SignalR.Lite;
 
 namespace SignalR.Lite
 {
     public abstract class PersistentConnection : HttpTaskAsyncHandler
     {
-        private static readonly MessageBus messageBus = new MessageBus();
+        private readonly static MessageBus _messageBus = new MessageBus();
 
         protected Connection Connection
         {
@@ -31,27 +31,27 @@ namespace SignalR.Lite
             }
             else
             {
-                string transport = context.Request.QueryString["transport"];
-                string cursor = context.Request.QueryString["messageId"];
-                string connectionId = context.Request.QueryString["connectionId"];
+                var transport = context.Request.QueryString["transport"];
+                var connectionId = context.Request.QueryString["connectionId"];
+                var cursor = context.Request.QueryString["messageId"];
+
                 var signals = new[] { GetType().FullName, connectionId };
 
                 if (context.Request.Url.LocalPath.EndsWith("/send"))
                 {
                     return HandleSend(context, connectionId);
                 }
-                else
+
+                switch (transport)
                 {
-                    switch (transport)
-                    {
-                        case "longPolling":
-                            return HandleLongPolling(context, cursor, connectionId, signals);
-                        case "serverSentEvents":
-                            return HandleServerSentEvents(context, cursor, connectionId, signals);
-                        default:
-                            throw new NotSupportedException();
-                    }
+                    case "serverSentEvents":
+                        return HandleSSE(context, transport, connectionId, cursor, signals);
+                    case "longPolling":
+                        return HandlingLongPolling(context, transport, connectionId, cursor, signals);
+                    default:
+                        throw new NotSupportedException();
                 }
+
             }
 
             return Task.FromResult(0);
@@ -59,32 +59,30 @@ namespace SignalR.Lite
 
         private Task HandleSend(HttpContext context, string connectionId)
         {
-            string data = context.Request.Form["data"];
+            var data = context.Request.Form["data"];
 
-            Connection = new Connection(messageBus, GetType().FullName);
+            Connection = new Connection(_messageBus, GetType().FullName);
 
             return OnReceived(connectionId, data);
         }
 
-        private async Task HandleServerSentEvents(HttpContext context, string cursor, string connectionId, string[] signals)
+        protected abstract Task OnReceived(string connectionId, string data);
+
+        private async Task HandleSSE(HttpContext context, string transport, string connectionId, string cursor, string[] signals)
         {
-            // Disable IIS compression
-            context.Request.Headers.Remove("Accept-Encoding");
+            var tcs = new TaskCompletionSource<object>();
 
             context.Response.ContentType = "text/event-stream";
-            await context.Response.WriteSSEAsync("init");
 
-            var subscription = messageBus.Subscribe(signals, cursor, (value, index) =>
+            // GTFO IIS
+            context.Request.Headers.Remove("Accept-Encoding");
+
+            context.Response.WriteSSE("init");
+
+            IDisposable sub = _messageBus.Subscribe(signals, cursor, (value, index) =>
             {
-                var response = new PersistentResponse();
-                response.Messages = new List<object>();
-                response.Messages.Add(value);
-                response.Cursor = index.ToString();
-
-                return context.Response.WriteJsonSSEAsync(response);
+                context.Response.WriteJsonSSE(new Response(value, index));
             });
-
-            var tcs = new TaskCompletionSource<object>();
 
             context.Response.ClientDisconnectedToken.Register(() =>
             {
@@ -92,73 +90,58 @@ namespace SignalR.Lite
             });
 
             await tcs.Task;
-            subscription.Dispose();
+            sub.Dispose();
         }
 
-        private async Task HandleLongPolling(HttpContext context, string cursor, string connectionId, string[] signals)
+        private async Task HandlingLongPolling(HttpContext context, string transport, string connectionId, string cursor, string[] signals)
         {
-            context.Response.ContentType = "application/json";
             var tcs = new TaskCompletionSource<object>();
 
-            var subscription = messageBus.Subscribe(signals, cursor, (value, index) =>
+            context.Response.ContentType = "application/json";
+
+            IDisposable sub = _messageBus.Subscribe(signals, cursor, (value, index) =>
             {
-                var response = new PersistentResponse();
-                response.Messages = new List<object>();
-                response.Messages.Add(value);
-                response.Cursor = index.ToString();
-
-                context.Response.WriteJson(response);
+                context.Response.WriteJson(new Response(value, index));
                 tcs.TrySetResult(null);
+            },
+            terminal: true);
 
-                return Task.FromResult(0);
-            });
-            
             context.Response.ClientDisconnectedToken.Register(() =>
             {
                 tcs.TrySetResult(null);
             });
 
             await tcs.Task;
-            subscription.Dispose();
+            sub.Dispose();
         }
-
-        protected abstract Task OnReceived(string connectionId, string data);
     }
 
-    public class PersistentResponse
+    class Response
     {
-        /// <summary>
-        /// The cursor representing what the client saw last
-        /// </summary>
-        [JsonProperty("C")]
-        public string Cursor { get; set; }
+        public Response(IEnumerable<object> messages, int index)
+        {
+            C = index.ToString();
+            M = messages;
+        }
 
-        /// <summary>
-        /// The messages received by this client. A list of json objects.
-        /// </summary>
-        [JsonProperty("M")]
-        public List<object> Messages { get; set; }
+        public string C { get; set; }
+        public IEnumerable<object> M { get; set; }
     }
 
     public class Connection
     {
-        private readonly MessageBus _bus;
-        private readonly string _defaultSignal;
+        private MessageBus _messageBus;
+        private string _defaultSignal;
 
-        public Connection(MessageBus bus, string defaultSignal)
+        public Connection(MessageBus messageBus, string defaultSignal)
         {
-            _bus = bus;
+            _messageBus = messageBus;
             _defaultSignal = defaultSignal;
         }
 
-        public Task Send(string connectionId, object value)
+        public Task Broadcast(object data)
         {
-            return _bus.Publish(connectionId, value);
-        }
-
-        public Task Broadcast(object value)
-        {
-            return _bus.Publish(_defaultSignal, value);
+            return _messageBus.Publish(_defaultSignal, data);
         }
     }
 }
