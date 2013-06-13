@@ -19,7 +19,7 @@ namespace SignalR.Lite
         // List of messages
         private readonly List<object> _messages = new List<object>();
 
-        public Task Publish(string topic, object data)
+        public Task Publish(string signal, object data)
         {
             int index;
             lock (_messages)
@@ -29,7 +29,7 @@ namespace SignalR.Lite
             }
 
             List<Callback> callbacks;
-            if (_subscriptions.TryGetValue(topic, out callbacks))
+            if (_subscriptions.TryGetValue(signal, out callbacks))
             {
                 lock (callbacks)
                 {
@@ -44,7 +44,7 @@ namespace SignalR.Lite
             return Task.FromResult(0);
         }
 
-        public IDisposable Subscribe(string[] topics, string cursor, Callback callback, bool terminal = false)
+        public IDisposable Subscribe(string[] signals, string cursor, Callback callback, bool terminal = false)
         {
             int from;
             if (!Int32.TryParse(cursor, out from))
@@ -82,7 +82,7 @@ namespace SignalR.Lite
                 }
             }
 
-            foreach (var topic in topics)
+            foreach (var topic in signals)
             {
                 List<Callback> callbacks;
                 if (!_subscriptions.TryGetValue(topic, out callbacks))
@@ -97,7 +97,7 @@ namespace SignalR.Lite
                 }
             }
 
-            return new Subscription(_subscriptions, topics, cb);
+            return new Subscription(_subscriptions, signals, cb);
         }
 
         private class Subscription : IDisposable
