@@ -11,36 +11,39 @@
 
     signalr.prototype = {
         init: function (url) {
-            this.url = url || "/signalr.ashx";
+            this.url = url;
         },
 
         start: function () {
             var connection = this;
 
             // Negotiate
-            return $.ajax(this.url + "/negotiate").then(function (res) {
-                connection.id = res.connectionId;
+            return $.ajax(connection.url + "/negotiate").then(function (response) {
+                connection.id = response.connectionId;
 
                 // Connect
                 var supportedTransports = [];
                 for (var key in transports) {
+                    if (key === "_") {
+                        continue;
+                    }
                     supportedTransports.push(key);
                 }
 
-                function tryConnect(currentTransport) {
-                    var transportName = supportedTransports[currentTransport],
+                function tryConnect(index) {
+                    var transportName = supportedTransports[index],
                         transport = transports[transportName];
 
-                    return transport.connect(connection)
+                    return transport.start(connection)
                         .then(function() {
                             connection.transport = transport;
                         },
                         function () {
-                            return tryConnect(currentTransport + 1);
+                            return tryConnect(index + 1);
                         });
                 }
 
-                return tryConnect(1);
+                return tryConnect(0);
             });
         },
 
@@ -65,7 +68,7 @@
             });
         },
 
-        onMessage: function (connection, data) {
+        onReceive: function (connection, data) {
             var response = window.JSON.parse(data),
                 messages = response.M;
 
@@ -80,7 +83,7 @@
     transports.serverSentEvents = {
         name: "serverSentEvents",
 
-        connect: function (connection) {
+        start: function (connection) {
             var d = $.Deferred();
 
             if (!window.EventSource) {
@@ -97,7 +100,7 @@
                 return d.promise();
             }
 
-            connection.eventSource.addEventListener("open", function (e) {
+            connection.eventSource.addEventListener("open", function () {
                 // Connected!
                 d.resolve();
             }, false);
@@ -107,27 +110,29 @@
                 if (e.data === "init") {
                     return;
                 }
-                transports._.onMessage(connection, e.data);
+                transports._.onReceive(connection, e.data);
             }, false);
 
             return d.promise();
         },
+
         send: transports._.send
     };
 
     transports.longPolling = {
         name: "longPolling",
 
-        connect: function (connection) {
-            var d = $.Deferred();
+        start: function (connection) {
+            var d = $.Deferred(),
+                that = this;
 
             (function poll() {
-                $.ajax(connection.url + "?connectionId=" + connection.id + "&transport=longPolling&messageId=" + (connection.messageId || ""), {
+                $.ajax(connection.url + "?connectionId=" + connection.id + "&transport=" + that.name + "&messageId=" + (connection.messageId || ""), {
                     type: "POST",
                     dataType: "text"
                 }).then(function (data) {
                     d.resolve();
-                    transports._.onMessage(connection, data);
+                    transports._.onReceive(connection, data);
                     poll();
                 });
             }());
@@ -136,6 +141,7 @@
 
             return d.promise();
         },
+
         send: transports._.send
     };
 
