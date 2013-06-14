@@ -1,21 +1,12 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using System.Web;
-using SignalR.Lite;
 
 namespace SignalR.Lite
 {
     public abstract class PersistentConnection : HttpTaskAsyncHandler
     {
         private readonly static MessageBus _messageBus = new MessageBus();
-
-        protected Connection Connection
-        {
-            get;
-            private set;
-        }
 
         public override Task ProcessRequestAsync(HttpContext context)
         {
@@ -45,9 +36,9 @@ namespace SignalR.Lite
                 switch (transport)
                 {
                     case "serverSentEvents":
-                        return HandleSSE(context, transport, connectionId, cursor, signals);
+                        return HandleSSE(context, cursor, signals);
                     case "longPolling":
-                        return HandlingLongPolling(context, transport, connectionId, cursor, signals);
+                        return HandlingLongPolling(context, cursor, signals);
                     default:
                         throw new NotSupportedException();
                 }
@@ -61,27 +52,41 @@ namespace SignalR.Lite
         {
             var data = context.Request.Form["data"];
 
-            Connection = new Connection(_messageBus, GetType().FullName);
-
             return OnReceived(connectionId, data);
         }
 
         protected abstract Task OnReceived(string connectionId, string data);
 
-        private async Task HandleSSE(HttpContext context, string transport, string connectionId, string cursor, string[] signals)
+        protected Task Broadcast(object data)
+        {
+            return _messageBus.Publish(GetType().FullName, data);
+        }
+
+        /// <summary>
+        /// An implementation of Server sent events (http://en.wikipedia.org/wiki/Server-sent_events)
+        /// </summary>
+        private async Task HandleSSE(HttpContext context, string cursor, string[] signals)
         {
             var tcs = new TaskCompletionSource<object>();
 
             context.Response.ContentType = "text/event-stream";
 
-            // GTFO IIS
+            // Tell IIS's dynamic compression module to back off.
+            // The module tries to buffer enough content before flushing it over the wire,
+            // we'd prefer if it would get out of the way.
             context.Request.Headers.Remove("Accept-Encoding");
 
             context.Response.WriteSSE("init");
 
-            IDisposable sub = _messageBus.Subscribe(signals, cursor, (value, index) =>
+            IDisposable subscription = _messageBus.Subscribe(signals, cursor, (messages, index) =>
             {
-                context.Response.WriteJsonSSE(new Response(value, index));
+                var response = new
+                {
+                    C = index,
+                    M = messages
+                };
+
+                context.Response.WriteJsonSSE(response);
             });
 
             context.Response.ClientDisconnectedToken.Register(() =>
@@ -90,18 +95,24 @@ namespace SignalR.Lite
             });
 
             await tcs.Task;
-            sub.Dispose();
+            subscription.Dispose();
         }
 
-        private async Task HandlingLongPolling(HttpContext context, string transport, string connectionId, string cursor, string[] signals)
+        private async Task HandlingLongPolling(HttpContext context, string cursor, string[] signals)
         {
             var tcs = new TaskCompletionSource<object>();
 
             context.Response.ContentType = "application/json";
 
-            IDisposable sub = _messageBus.Subscribe(signals, cursor, (value, index) =>
+            IDisposable subscription = _messageBus.Subscribe(signals, cursor, (messages, index) =>
             {
-                context.Response.WriteJson(new Response(value, index));
+                var response = new
+                {
+                    C = index,
+                    M = messages
+                };
+
+                context.Response.WriteJson(response);
                 tcs.TrySetResult(null);
             },
             terminal: true);
@@ -112,36 +123,7 @@ namespace SignalR.Lite
             });
 
             await tcs.Task;
-            sub.Dispose();
-        }
-    }
-
-    class Response
-    {
-        public Response(IEnumerable<object> messages, int index)
-        {
-            C = index.ToString();
-            M = messages;
-        }
-
-        public string C { get; set; }
-        public IEnumerable<object> M { get; set; }
-    }
-
-    public class Connection
-    {
-        private MessageBus _messageBus;
-        private string _defaultSignal;
-
-        public Connection(MessageBus messageBus, string defaultSignal)
-        {
-            _messageBus = messageBus;
-            _defaultSignal = defaultSignal;
-        }
-
-        public Task Broadcast(object data)
-        {
-            return _messageBus.Publish(_defaultSignal, data);
+            subscription.Dispose();
         }
     }
 }

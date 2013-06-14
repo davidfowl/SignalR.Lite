@@ -10,7 +10,7 @@ namespace SignalR.Lite
     {
         protected override Task OnReceived(string connectionId, string data)
         {
-            return Connection.Broadcast(data);
+            return Broadcast(data);
         }
     }
 }
