@@ -13,6 +13,7 @@ namespace SignalR.Lite
 
         public static void WriteSSE(this HttpResponse response, string value)
         {
+            // See the server sent events data framing format (http://www.w3.org/TR/2011/WD-eventsource-20110310/#server-sent-events-intro)
             response.Write("data:" + value + "\n\n");
             response.Flush();
         }

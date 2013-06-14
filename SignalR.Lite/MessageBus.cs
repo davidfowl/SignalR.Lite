@@ -26,6 +26,7 @@ namespace SignalR.Lite
             int index;
             lock (_messages)
             {
+                // Add the message to the list
                 _messages.Add(data);
                 index = _messages.Count - 1;
             }
@@ -37,6 +38,7 @@ namespace SignalR.Lite
                 {
                     var messages = new[] { data };
 
+                    // Invoke the callback on all subscribers
                     for (int i = callbacks.Count - 1; i >= 0; i--)
                     {
                         Callback callback = callbacks[i];
